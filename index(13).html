@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Global25 Genetic Distance Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet" />
+<style>
+:root{--bg:#0b0f14;--panel:#111820;--panel2:#161e28;--border:#1e2d3d;--accent:#00d4aa;--accent2:#0077ff;--text:#c8d8e8;--text-dim:#5a7a9a;--mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column}
+#topbar{height:52px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;z-index:2000;flex-shrink:0;overflow:visible}
+#topbar h1{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.divider{width:1px;height:24px;background:var(--border);flex-shrink:0}
+#search-wrap{position:relative;flex:1;max-width:360px;min-width:180px}
+#search-wrap svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);opacity:.4;pointer-events:none}
+#search-input{width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:11px;padding:7px 9px 7px 30px;outline:none;transition:border-color .2s}
+#search-input:focus{border-color:var(--accent)}
+#search-input::placeholder{color:var(--text-dim)}
+/* Dropdown rendered in body via JS — see absolute positioning below */
+#search-dropdown{display:none;position:fixed;background:var(--panel2);border:1px solid var(--border);border-radius:6px;max-height:260px;overflow-y:auto;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.8)}
+#search-dropdown.open{display:block}
+#search-dropdown::-webkit-scrollbar{width:3px}
+#search-dropdown::-webkit-scrollbar-thumb{background:var(--border)}
+.dd-item{padding:7px 11px;font-family:var(--mono);font-size:11px;cursor:pointer;transition:background .12s;border-bottom:1px solid rgba(30,45,61,.5)}
+.dd-item:last-child{border-bottom:none}
+.dd-item:hover,.dd-item.active{background:rgba(0,212,170,.1);color:var(--accent)}
+.dd-sub{color:var(--text-dim);font-size:9px;margin-top:1px}
+#legend{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-left:auto;white-space:nowrap;flex-shrink:0}
+.legend-swatch{width:72px;height:9px;border-radius:4px;background:linear-gradient(to right,#00e5a0,#00c878 15%,#009966 35%,#006644 55%,#0044aa,#0033cc);border:1px solid var(--border)}
+#reset-btn{display:none;background:var(--panel2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;transition:all .15s;white-space:nowrap;flex-shrink:0}
+#reset-btn:hover{border-color:var(--accent);color:var(--accent)}
+#reset-btn.visible{display:block}
+.count-pill{font-family:var(--mono);font-size:10px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:3px 8px;color:var(--text-dim);flex-shrink:0}
+.count-pill span{color:var(--accent)}
+#main{display:flex;flex:1;overflow:hidden;position:relative}
+/* Sidebar */
+#sidebar{width:270px;min-width:270px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:transform .25s ease,width .25s ease,min-width .25s ease}
+#sidebar.collapsed{transform:translateX(-270px);width:0;min-width:0;border-right:none}
+#sidebar-header{padding:11px 14px 9px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em;display:flex;align-items:center;justify-content:space-between}
+#selected-info{padding:11px 14px;border-bottom:1px solid var(--border);min-height:72px}
+.no-sel{color:var(--text-dim);font-size:11px;font-family:var(--mono);line-height:1.6}
+.sel-name{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent)}
+.sel-pop{font-size:11px;color:var(--text-dim);margin-top:2px}
+.sel-coords{font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-top:5px}
+#dist-list{flex:1;overflow-y:auto}
+#dist-list::-webkit-scrollbar{width:3px}
+#dist-list::-webkit-scrollbar-thumb{background:var(--border)}
+.dist-row{display:flex;align-items:center;gap:8px;padding:5px 14px;cursor:pointer;transition:background .12s;border-bottom:1px solid rgba(30,45,61,.4)}
+.dist-row:hover{background:rgba(0,212,170,.05)}
+.dist-rank{font-family:var(--mono);font-size:9px;color:var(--text-dim);width:22px;flex-shrink:0;text-align:right}
+.dist-swatch{width:9px;height:9px;border-radius:50%;flex-shrink:0;border:1px solid rgba(255,255,255,.12)}
+.dist-name{font-family:var(--mono);font-size:10px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dist-val{font-family:var(--mono);font-size:9px;color:var(--text-dim);flex-shrink:0}
+#dist-placeholder{padding:16px 14px;font-size:11px;color:var(--text-dim);font-family:var(--mono);line-height:1.8}
+/* Toggle button — Leaflet custom control, styled to match zoom buttons */
+.leaflet-control-sidebar-toggle a{font-size:16px!important;line-height:26px!important}
+#map{flex:1;background:#0d1520;position:relative}
+.leaflet-container{background:#0d1520}
+.leaflet-tile-pane{filter:brightness(.5) saturate(.35) hue-rotate(200deg)}
+.leaflet-control-zoom{border:1px solid var(--border)!important;border-radius:6px!important;overflow:hidden}
+.leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;border-color:var(--border)!important}
+.leaflet-control-zoom a:hover{background:var(--panel2)!important}
+.leaflet-control-attribution{background:rgba(11,15,20,.7)!important;color:var(--text-dim)!important;font-size:9px!important}
+.leaflet-tooltip.g-tooltip{background:var(--panel);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:11px;padding:8px 12px;box-shadow:0 4px 20px rgba(0,0,0,.7);white-space:nowrap;pointer-events:none}
+.leaflet-tooltip.g-tooltip::before{display:none}
+.tt-name{font-weight:600;color:var(--accent);font-size:12px}
+.tt-pop{color:var(--text-dim);margin-top:2px}
+.tt-dist{margin-top:5px;font-size:10px}
+.tt-dist span{color:var(--accent2)}
+#loading{position:absolute;top:52px;left:0;right:0;bottom:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2000;gap:16px}
+#loading-bar-wrap{width:260px;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+#loading-bar{height:100%;width:0%;background:var(--accent);transition:width .15s;border-radius:2px}
+#loading-text{font-family:var(--mono);font-size:12px;color:var(--text-dim)}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>⬡ Global25 Modern Populations</h1>
+  <div class="divider"></div>
+  <div id="search-wrap">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input id="search-input" type="text" placeholder="Search population or region…" autocomplete="off"/>
+  </div>
+  <button id="reset-btn" onclick="resetSelection()">✕ Clear</button>
+  <div class="divider"></div>
+  <div id="legend"><span>0</span><div class="legend-swatch"></div><span>1.0</span></div>
+  <div class="divider"></div>
+  <div class="count-pill"><span id="count-shown">—</span> pops</div>
+</div>
+
+<div id="main">
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <span>Distance Rankings</span>
+      <button id="close-sidebar" title="Hide panel" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:14px;padding:0 2px;line-height:1" onclick="toggleSidebar()">✕</button>
+    </div>
+    <div id="selected-info"><div class="no-sel">Click any dot or search to compute genetic distances.</div></div>
+    <div id="dist-list"><div id="dist-placeholder">Select any population to rank all others by Euclidean distance in Global25 PCA space (PC1–PC25).</div></div>
+  </div>
+  <div id="map"></div>
+</div>
+
+<div id="search-dropdown"></div>
+<div id="loading">
+  <div id="loading-text">Loading Global25 dataset…</div>
+  <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="samples.js"></script>
+<script>
+const DEFAULT_R = 6, SEL_R = 13;
+let selectedSample = null;
+const markerMap = {};
+
+// ── Gradient with two segments ────────────────────────────────────────────────
+// Segment A: dist 0.00→0.20 maps to colour t 0.00→0.75  (75% of colour range)
+// Segment B: dist 0.20→1.00 maps to colour t 0.75→1.00  (25% of colour range)
+// Colour stops: t=0 → #00e5a0 (bright green)
+//               t=0.75 → #006644 (dark green)
+//               t=1.0  → #0033cc (dark blue)
+function distToT(d) {
+  const dc = Math.max(0, Math.min(1, d));
+  if (dc <= 0.2) return (dc / 0.2) * 0.75;           // 0–0.2 → t 0–0.75
+  return 0.75 + ((dc - 0.2) / 0.8) * 0.25;           // 0.2–1 → t 0.75–1
+}
+
+function gradColor(t) {
+  const tc = Math.max(0, Math.min(1, t));
+  if (tc <= 0.75) {
+    // green #00e5a0 → dark green #006644
+    const u = tc / 0.75;
+    return `rgb(0,${Math.round(229 + u*(102-229))},${Math.round(160 + u*(68-160))})`;
+  } else {
+    // dark green #006644 → dark blue #0033cc
+    const u = (tc - 0.75) / 0.25;
+    return `rgb(${Math.round(0 + u*0)},${Math.round(102 + u*(51-102))},${Math.round(68 + u*(204-68))})`;
+  }
+}
+
+function colorForDist(d) { return gradColor(distToT(d)); }
+
+function geneticDist(a,b){
+  let s=0; for(let i=0;i<25;i++) s+=(a.pca[i]-b.pca[i])**2; return Math.sqrt(s);
+}
+
+function ttHTML(s, dist){
+  return `<div class="tt-name">${s.name}</div><div class="tt-pop">${s.region}</div>`
+    + (dist!==null ? `<div class="tt-dist">PCA dist: <span>${dist.toFixed(5)}</span></div>` : '');
+}
+
+// ── Sidebar toggle (defined early — used by Leaflet control below) ────────────
+function toggleSidebar(){
+  document.getElementById('sidebar').classList.toggle('collapsed');
+  setTimeout(()=>map.invalidateSize(),260);
+}
+
+// ── Map ───────────────────────────────────────────────────────────────────────
+const map = L.map('map',{center:[30,20],zoom:3,zoomControl:false});
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'© OpenStreetMap',maxZoom:19
+}).addTo(map);
+
+// Sidebar toggle as a Leaflet control sitting ABOVE the zoom buttons
+const SidebarToggle = L.Control.extend({
+  options: { position: 'topleft' },
+  onAdd() {
+    const c = L.DomUtil.create('div','leaflet-bar leaflet-control leaflet-control-sidebar-toggle');
+    const a = L.DomUtil.create('a','',c);
+    a.href = '#'; a.title = 'Toggle rankings panel';
+    a.innerHTML = '☰';
+    a.style.cssText = 'font-size:16px;line-height:26px;display:block;text-align:center;text-decoration:none';
+    L.DomEvent.on(a,'click', L.DomEvent.stop).on(a,'click', toggleSidebar);
+    return c;
+  }
+});
+new SidebarToggle().addTo(map);
+
+// Zoom control BELOW the toggle
+L.control.zoom({ position: 'topleft' }).addTo(map);
+
+// Click on empty map → deselect
+// Track whether the click landed on a marker via a flag set in marker mousedown
+let _mouseDownOnMarker = false;
+map.on('click', () => {
+  if (_mouseDownOnMarker) { _mouseDownOnMarker = false; return; }
+  if (selectedSample) resetSelection();
+});
+
+// Chunked marker init
+(function initMarkers(){
+  const bar = document.getElementById('loading-bar');
+  const txt = document.getElementById('loading-text');
+  document.getElementById('count-shown').textContent = SAMPLES.length.toLocaleString();
+  let i=0;
+  function chunk(){
+    const end=Math.min(i+300, SAMPLES.length);
+    for(;i<end;i++){
+      const s=SAMPLES[i];
+      const m=L.circleMarker([s.lat,s.lng],{
+        radius:DEFAULT_R,fillColor:'#00d4aa',color:'#0a0e13',weight:1,fillOpacity:.82
+      });
+      m.bindTooltip(ttHTML(s,null),{className:'g-tooltip',direction:'top',offset:[0,-5]});
+      m.on('mousedown', () => { _mouseDownOnMarker = true; });
+      m.on('click',()=>selectSample(s));
+      m.addTo(map);
+      markerMap[s.id]=m;
+    }
+    bar.style.width=Math.round(i/SAMPLES.length*100)+'%';
+    txt.textContent=`Loading… ${i.toLocaleString()} / ${SAMPLES.length.toLocaleString()}`;
+    if(i<SAMPLES.length) requestAnimationFrame(chunk);
+    else document.getElementById('loading').style.display='none';
+  }
+  chunk();
+})();
+
+function selectSample(sample){
+  selectedSample=sample;
+  const others=SAMPLES.filter(s=>s.id!==sample.id);
+  const dists=others.map(s=>({s,d:geneticDist(sample,s)})).sort((a,b)=>a.d-b.d);
+
+  markerMap[sample.id].setStyle({fillColor:'#fff',color:'#00d4aa',weight:3,radius:SEL_R,fillOpacity:1});
+  markerMap[sample.id].setTooltipContent(ttHTML(sample,0));
+
+  dists.forEach(({s,d})=>{
+    markerMap[s.id].setStyle({fillColor:colorForDist(d),color:'#0a0e13',weight:1,radius:DEFAULT_R,fillOpacity:.88});
+    markerMap[s.id].setTooltipContent(ttHTML(s,d));
+  });
+
+  document.getElementById('selected-info').innerHTML=
+    `<div class="sel-name">${sample.name}</div>
+     <div class="sel-pop">${sample.region}</div>
+     <div class="sel-coords">${sample.lat.toFixed(3)}°, ${sample.lng.toFixed(3)}°</div>`;
+
+  const listEl=document.getElementById('dist-list');
+  const frag=document.createDocumentFragment();
+  dists.forEach(({s,d},idx)=>{
+    const row=document.createElement('div');
+    row.className='dist-row';
+    row.innerHTML=`<div class="dist-rank">${idx+1}</div>
+      <div class="dist-swatch" style="background:${colorForDist(d)}"></div>
+      <div class="dist-name">${s.name}<br><span style="color:var(--text-dim);font-size:9px">${s.region}</span></div>
+      <div class="dist-val">${d.toFixed(4)}</div>`;
+    row.addEventListener('click',()=>{
+      map.setView([s.lat,s.lng],6,{animate:true});
+      setTimeout(()=>markerMap[s.id].openTooltip(),500);
+    });
+    frag.appendChild(row);
+  });
+  listEl.innerHTML='';
+  listEl.appendChild(frag);
+  document.getElementById('reset-btn').classList.add('visible');
+  document.getElementById('search-input').value='';
+  closeDropdown();
+}
+
+function resetSelection(){
+  selectedSample=null;
+  SAMPLES.forEach(s=>{
+    markerMap[s.id].setStyle({fillColor:'#00d4aa',color:'#0a0e13',weight:1,radius:DEFAULT_R,fillOpacity:.82});
+    markerMap[s.id].setTooltipContent(ttHTML(s,null));
+  });
+  document.getElementById('selected-info').innerHTML='<div class="no-sel">Click any dot or search to compute genetic distances.</div>';
+  document.getElementById('dist-list').innerHTML='<div id="dist-placeholder">Select any population to rank all others by Euclidean distance in Global25 PCA space (PC1–PC25).</div>';
+  document.getElementById('reset-btn').classList.remove('visible');
+}
+
+
+
+// ── Search — uses fixed positioning to avoid overflow clipping ────────────────
+const searchInput = document.getElementById('search-input');
+const dropdown    = document.getElementById('search-dropdown');
+let ddActive = -1, ddMatches = [];
+
+function positionDropdown(){
+  const rect = searchInput.getBoundingClientRect();
+  dropdown.style.left  = rect.left + 'px';
+  dropdown.style.top   = (rect.bottom + 4) + 'px';
+  dropdown.style.width = rect.width + 'px';
+}
+
+searchInput.addEventListener('input', ()=>{
+  const q = searchInput.value.trim();
+  if(!q){ closeDropdown(); return; }
+  const ql = q.toLowerCase();
+  ddMatches = SAMPLES.filter(s =>
+    s.name.toLowerCase().includes(ql) || s.region.toLowerCase().includes(ql)
+  ).slice(0, 60);
+  if(!ddMatches.length){ closeDropdown(); return; }
+  dropdown.innerHTML = ddMatches.map((s,i)=>
+    `<div class="dd-item" data-idx="${i}"><div>${s.name}</div><div class="dd-sub">${s.region}</div></div>`
+  ).join('');
+  dropdown.querySelectorAll('.dd-item').forEach(el=>{
+    el.addEventListener('mousedown', e=>{ e.preventDefault(); pickDd(+el.dataset.idx); });
+  });
+  positionDropdown();
+  dropdown.classList.add('open');
+  ddActive = -1;
+});
+
+function pickDd(idx){
+  const s = ddMatches[idx];
+  selectSample(s);
+  map.setView([s.lat, s.lng], 5, {animate:true});
+  searchInput.value = s.name;
+  closeDropdown();
+}
+
+searchInput.addEventListener('keydown', e=>{
+  const items = dropdown.querySelectorAll('.dd-item');
+  if(e.key==='ArrowDown'){ e.preventDefault(); ddActive=Math.min(ddActive+1,items.length-1); items.forEach((el,i)=>el.classList.toggle('active',i===ddActive)); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); ddActive=Math.max(ddActive-1,0); items.forEach((el,i)=>el.classList.toggle('active',i===ddActive)); }
+  else if(e.key==='Enter' && ddActive>=0) pickDd(ddActive);
+  else if(e.key==='Escape') closeDropdown();
+});
+
+// Reposition on scroll/resize
+window.addEventListener('resize', ()=>{ if(dropdown.classList.contains('open')) positionDropdown(); });
+document.addEventListener('click', e=>{ if(!e.target.closest('#search-wrap') && !e.target.closest('#search-dropdown')) closeDropdown(); });
+function closeDropdown(){ dropdown.classList.remove('open'); ddActive=-1; }
+</script>
+</body>
+</html>
